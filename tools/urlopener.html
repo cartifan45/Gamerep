@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>URL Opener LOL</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<style>
+:root { --blue:#4f7cff; --bg:rgba(10,15,40,.92); }
+
+body{
+  margin:0;height:100vh;font-family:'Segoe UI',sans-serif;
+  background:radial-gradient(circle at top,#0b1d3a,#05070f);
+  color:#e0eaff;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+}
+
+canvas{position:fixed;inset:0;z-index:0}
+
+.panel{
+  z-index:1;width:90%;max-width:720px;
+  background:var(--bg);
+  border:1px solid var(--blue);
+  border-radius:18px;padding:26px;
+  box-shadow:0 0 35px rgba(80,120,255,.4);
+}
+
+h1{text-align:center;color:#8ab4ff;text-shadow:0 0 14px var(--blue)}
+
+textarea{
+  width:100%;height:220px;
+  background:#070b1e;color:#dbe4ff;
+  border:1px solid var(--blue);
+  border-radius:12px;padding:14px;resize:none;
+}
+
+.buttons{display:flex;gap:12px;margin-top:18px}
+
+button{
+  flex:1;padding:12px;font-size:15px;
+  border-radius:14px;border:1px solid var(--blue);
+  background:linear-gradient(145deg,#1b2fff,#4f7cff);
+  color:white;cursor:pointer;
+}
+
+.popup{
+  position:fixed;background:var(--bg);
+  border:1px solid var(--blue);
+  border-radius:14px;padding:14px;
+  box-shadow:0 0 28px rgba(80,120,255,.6);
+  cursor:move;z-index:10;font-size:13px;
+}
+
+.hidden{display:none}
+.good{color:#5cff9a}
+.bad{color:#ff6b6b}
+.wait{color:#ffd36b}
+
+#tester{right:18px;bottom:18px;width:260px}
+#testerResults{max-height:150px;overflow:auto}
+
+.bar{height:10px;border-radius:6px;margin:4px 0}
+
+.toast{
+  position:fixed;bottom:30px;left:50%;
+  transform:translateX(-50%);
+  background:#1b2fff;padding:10px 18px;
+  border-radius:12px;animation:fade 2s forwards;
+}
+@keyframes fade{0%{opacity:0}15%{opacity:1}85%{opacity:1}100%{opacity:0}}
+</style>
+</head>
+<body>
+
+<canvas id="stars"></canvas>
+
+<div class="panel">
+  <h1>⚡ URL Opener LOL</h1>
+  <textarea id="urls" placeholder="Paste anything here… links auto-detected"></textarea>
+  <div class="buttons">
+    <button onclick="openUrls()">🚀 Launch</button>
+    <button onclick="copyUrls()">📋 Copy</button>
+  </div>
+</div>
+
+<div id="detectedBox" class="popup hidden" style="top:80px;left:50%;transform:translateX(-50%)">
+  <h3>Detected Links</h3>
+  <div id="linkList"></div>
+  <button onclick="toggleMore()">➕ More</button>
+</div>
+
+<div id="moreBox" class="popup hidden" style="top:140px;left:50%;transform:translateX(-50%)">
+  <h3>More</h3>
+  <button onclick="fileInput.click()">📁 Upload File</button>
+  <button onclick="downloadBookmarks()">🔖 Bookmark File</button>
+</div>
+
+<div id="tester" class="popup">
+  <h3>🧪 Link Tester</h3>
+  <div id="testerResults">Waiting for links…</div>
+  <button onclick="toggleHistory()">📜 History</button>
+</div>
+
+<div id="historyBox" class="popup hidden" style="right:300px;bottom:18px;width:260px">
+  <h3>📜 History</h3>
+  <div id="historyList" style="max-height:160px;overflow:auto"></div>
+  <button onclick="toggleFilter()">🔍 Filter</button>
+  <button onclick="toggleGraph()">📊 Speed</button>
+</div>
+
+<div id="filterBox" class="popup hidden" style="right:580px;bottom:18px;width:200px">
+  <h3>Filter</h3>
+  <button onclick="loadHistory('all')">All</button>
+  <button onclick="loadHistory('Allowed')">Allowed</button>
+  <button onclick="loadHistory('Blocked')">Blocked</button>
+</div>
+
+<div id="graphBox" class="popup hidden" style="right:580px;bottom:240px;width:240px">
+  <h3>Speed Graph</h3>
+  <div id="graph"></div>
+</div>
+
+<input type="file" id="fileInput" hidden>
+
+<script>
+const urlsEl=document.getElementById("urls");
+const URL_REGEX=/\b((https?:\/\/)?([\w-]+\.)+[a-z]{2,}(\/\S*)?)\b/gi;
+const normalize=u=>/^https?:\/\//i.test(u)?u:"https://"+u;
+const getUrls=()=>[...new Set((urlsEl.value.match(URL_REGEX)||[]).map(normalize))];
+
+function toast(t){
+  const d=document.createElement("div");
+  d.className="toast";d.textContent=t;
+  document.body.appendChild(d);
+  setTimeout(()=>d.remove(),2000);
+}
+
+function openUrls(){getUrls().forEach(u=>window.open(u,"_blank"))}
+function copyUrls(){navigator.clipboard.writeText(getUrls().join("\n"));toast("Copied!")}
+
+urlsEl.addEventListener("input",()=>{
+  const list=getUrls();
+  if(list.length){
+    detectedBox.classList.remove("hidden");
+    linkList.innerHTML=list.map(l=>"• "+l).join("<br>");
+    runTests();
+  }
+});
+
+fileInput.onchange=e=>{
+  const r=new FileReader();
+  r.onload=ev=>urlsEl.value=ev.target.result;
+  r.readAsText(e.target.files[0]);
+};
+
+function downloadBookmarks(){
+  const u=getUrls();
+  let h='<!DOCTYPE NETSCAPE-Bookmark-file-1><DL><p>';
+  u.forEach(l=>h+=`<DT><A HREF="${l}">${l}</A>`);
+  const b=new Blob([h],{type:'text/html'});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(b);
+  a.download="bookmarks.html";
+  a.click();
+}
+
+function toggleMore(){moreBox.classList.toggle("hidden")}
+function toggleHistory(){historyBox.classList.toggle("hidden");loadHistory()}
+function toggleFilter(){filterBox.classList.toggle("hidden")}
+function toggleGraph(){graphBox.classList.toggle("hidden")}
+
+function saveHistory(url,result,time){
+  const h=JSON.parse(localStorage.getItem("hist")||"[]");
+  h.unshift({url,result,time:new Date().toLocaleString()});
+  localStorage.setItem("hist",JSON.stringify(h.slice(0,50)));
+}
+
+function loadHistory(filter="all"){
+  const h=JSON.parse(localStorage.getItem("hist")||"[]");
+  historyList.innerHTML=h
+    .filter(x=>filter==="all"||x.result===filter)
+    .map(x=>`[${x.time}] ${x.result} — ${x.url}`).join("<br>") || "No history";
+}
+
+function runTests(){
+  testerResults.innerHTML="";
+  graph.innerHTML="";
+  getUrls().forEach(u=>{
+    const row=document.createElement("div");
+    row.innerHTML=`<span class="wait">⏳</span> ${u}`;
+    testerResults.appendChild(row);
+
+    const start=performance.now();
+    const f=document.createElement("iframe");
+    f.style.display="none";f.src=u;
+    let done=false;
+
+    const t=setTimeout(()=>{
+      if(!done){
+        row.innerHTML=`<span class="bad">✖ Blocked</span> ${u}`;
+        saveHistory(u,"Blocked",3000);
+        addBar(3000);
+      }
+      f.remove();
+    },3000);
+
+    f.onload=()=>{
+      if(!done){
+        done=true;clearTimeout(t);
+        const ms=performance.now()-start;
+        row.innerHTML=`<span class="good">✔ Allowed</span> ${u}`;
+        saveHistory(u,"Allowed",ms);
+        addBar(ms);
+        f.remove();
+      }
+    };
+    document.body.appendChild(f);
+  });
+}
+
+function addBar(ms){
+  const b=document.createElement("div");
+  b.className="bar";
+  b.style.width=Math.min(ms/20,100)+"%";
+  b.style.background=ms<800?"#5cff9a":ms<1600?"#ffd36b":"#ff6b6b";
+  graph.appendChild(b);
+}
+
+/* ===== DRAG + MAGNET ===== */
+document.querySelectorAll(".popup").forEach(p=>{
+  p.onmousedown=e=>{
+    let ox=e.clientX-p.offsetLeft,oy=e.clientY-p.offsetTop;
+    document.onmousemove=m=>{
+      let x=m.clientX-ox,y=m.clientY-oy,s=20;
+      if(x<s)x=0;if(y<s)y=0;
+      if(innerWidth-(x+p.offsetWidth)<s)x=innerWidth-p.offsetWidth;
+      if(innerHeight-(y+p.offsetHeight)<s)y=innerHeight-p.offsetHeight;
+      p.style.left=x+"px";p.style.top=y+"px";
+    };
+    document.onmouseup=()=>document.onmousemove=null;
+  };
+});
+
+/* ===== PARTICLES (FIXED) ===== */
+const canvas=document.getElementById("stars");
+const ctx=canvas.getContext("2d");
+let w,h,stars=[];
+function resize(){
+  w=canvas.width=innerWidth;
+  h=canvas.height=innerHeight;
+  stars=Array.from({length:120},()=>({
+    x:Math.random()*w,
+    y:Math.random()*h,
+    r:Math.random()*2,
+    s:Math.random()+0.3
+  }));
+}
+function draw(){
+  ctx.clearRect(0,0,w,h);
+  ctx.fillStyle="#8ab4ff";
+  stars.forEach(s=>{
+    ctx.beginPath();
+    ctx.arc(s.x,s.y,s.r,0,Math.PI*2);
+    ctx.fill();
+    s.y+=s.s;
+    if(s.y>h){s.y=0;s.x=Math.random()*w;}
+  });
+  requestAnimationFrame(draw);
+}
+resize();draw();
+</script>
+</body>
+</html>
+
+
